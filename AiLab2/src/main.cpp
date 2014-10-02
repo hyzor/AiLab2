@@ -25,7 +25,126 @@ struct GameState
 	{}
 };
 
-//This is a comment
+//Return the index of the waterhole with the smallest G
+int findMin(std::vector<int> open, std::vector<int> G){
+	int min = G[open[0]-1];
+	int index = 0;
+	for(int i = 1; i < open.size(); i++){
+		if(G[open[i]-1] < min){
+			min = G[open[i]-1];
+			index = i;
+		}
+	}
+	return index;
+}
+
+bool isInVector(int waterhole, std::vector<int> theArray){
+	for(int i = 0; i < theArray.size(); i++){
+		if(theArray[i] == waterhole)
+			return true;
+	}
+	return false;
+}
+
+//Trace back through parents to get a path
+std::vector<int> traceBack(int current, int start, std::vector<int> parents){
+	std::vector<int> temp; //Will store the path in the wrong direction
+	int parent;
+	while (current != start){ //As long as the start waterhole isn't reached...
+		temp.push_back(current); //Add the waterhole to the path
+		parent = parents[current-1]; //Get the parent
+		current = parent; //Traverse to the parent waterhole
+	}
+
+	//Flip the vector
+	std::vector<int> path;
+	for(int i = temp.size()-1; i >= 0; i--)
+		path.push_back(temp[i]);
+
+	return path;
+}
+
+//Find the shortest path between two waterholes using Dijkstra's algorithm
+//Note that the waterholes are zero EXCLUSIVE while indices are zero INCLUSIVE
+std::vector<int> findShortestPath(int start, int goal, std::vector<std::vector<int>> paths){
+	if(start == goal){
+		std::vector<int> emptySet;
+		return emptySet;
+	}
+
+	int size = 35;
+	std::vector<int> G(size, 40);
+
+	std::vector<int> open;
+	std::vector<int> closed;
+	std::vector<int> parent(size);
+
+	open.push_back(start);
+	G[start-1] = 0;
+
+	int current; //The waterhole being expanded
+	int neighbor; //Used to store the neighbor waterholes in the vector neighbors
+	std::vector<int> neighbors; //Stores the current neighbors
+
+	while(open.size() > 0)
+	{
+		//Expand the waterhole in the open set with lowest G
+		int index = findMin(open, G);
+		current = open[index];
+		open.erase(open.begin()+index); //Remove from the open set...
+		closed.push_back(current);      //... and add it to the closed set
+
+		//If the waterhole is the goal waterhole we trace back to the start and return
+		if (current == goal)
+			return traceBack(current, start, parent);
+
+		//Find neighbors
+		neighbors.clear();
+		neighbors = paths[current-1];
+
+		int newGScore; //Holds G for neighbors
+
+		//Explore all neighbor waterholes
+		for(int i = 0; i < neighbors.size(); i++){
+			if(!isInVector(neighbors[i], closed)){
+				newGScore = G[current-1] + 1; //Distance from start through the current waterhole to the neighbor waterhole
+				if(!isInVector(neighbors[i], open) || newGScore < G[neighbors[i]-1]) //Better path to this neighbor found
+				{
+					parent[neighbors[i]-1] = current;
+					G[neighbors[i]-1] = newGScore;
+					if(!isInVector(neighbors[i], open)) //If the neighbor waterhole isn't already in the open set it is added
+						open.push_back(neighbors[i]);
+				}
+			}
+		}
+	}
+	std::vector<int> epicFail;
+	std::cout << "Dijkstra has failed!" << std::endl;
+	return epicFail; //Hopefully this doesn't happen
+}
+
+//Method for testing the Dijkstra algorithm
+void testDijkstra(int start, int goal, std::vector<std::vector<int>> paths){
+	std::cout << "***Trying Dijkstra's algorithm from hole " << start << " to hole " << goal << "***";
+	
+	std::vector<int> path = findShortestPath(start, goal, paths);
+	std::cout << std::endl << std::endl << "Best found path: " << std::endl;
+	for(int i = 0; i < path.size(); i++){
+		std::cout << path[i] << " ";
+	}
+	std::cout << std::endl << std::endl;
+
+	std::cout << "Paths: " << std::endl;
+	for(int i = 0; i < paths.size(); i++){
+		std::cout << i+1 << ": ";
+		for(int j = 0; j < paths[i].size(); j++){
+			std::cout << paths[i][j] << " ";
+		}
+		std::cout << std::endl;
+	}
+
+	while(true){}
+}
 
 int main()
 {
