@@ -5,7 +5,7 @@
 #include "CrocGame.h"
 
 #define NUM_GAMES 100
-#define NUM_WATERHOLES 36
+#define NUM_WATERHOLES 35
 #define MOVE_SEARCH L"S"
 
 struct GameState
@@ -159,7 +159,7 @@ int main()
 
 	unsigned int numGamesFinished = 0;
 
-	std::wcout << "Staring game using group name " << groupName.c_str() << std::endl;
+	std::wcout << "Starting game using group name " << groupName.c_str() << std::endl;
 	CrocSession* crocSession = new CrocSession(groupName, isOk);
 
 	// Game paths
@@ -227,7 +227,8 @@ int main()
 			// to have the Croc in it based on the readings from the Croc
 			for (unsigned int i = 0; i < NUM_WATERHOLES; ++i)
 			{
-
+				double probabilityValue = 0.0; // Some calculated value
+				waterHoleProbabilities[i] = probabilityValue;
 			}
 
 			// A backpacker is currently being eaten, this reveals the Crocs location
