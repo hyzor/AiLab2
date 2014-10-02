@@ -1,8 +1,12 @@
 #include <iostream>
+#include <string>
+#include <sstream>
 
 #include "CrocGame.h"
 
 #define NUM_GAMES 100
+#define NUM_WATERHOLES 36
+#define MOVE_SEARCH L"S"
 
 struct GameState
 {
@@ -162,6 +166,13 @@ int main()
 	std::vector<std::vector<int>> paths;
 	paths = crocSession->getPaths(); // Paths are constant from game to game
 
+	std::vector<int> gameScores;
+	double waterHoleProbabilities[NUM_WATERHOLES] = { 0.0 };
+
+	// The moves to be made
+	std::wostringstream playerMove1Str;
+	std::wostringstream playerMove2Str;
+
 	// Play a certain amount of games before posting results
 	while(numGamesFinished < NUM_GAMES)
 	{
@@ -183,6 +194,12 @@ int main()
 		// Game state
 		GameState curGameState;
 
+		// The amount of moves we have currently made
+		int curGameScore = 0;
+
+		// Clear our probabilities array
+		std::fill_n(waterHoleProbabilities, NUM_WATERHOLES, 0.0);
+
 		//--------------------------------------------
 		// Game session loop
 		//--------------------------------------------
@@ -198,10 +215,20 @@ int main()
 				curGameState.salineReading,			// Saline reading at Croc location
 				curGameState.alkalinityReading);	// Alkalinity reading at Croc location
 
+			playerMove1Str.str(std::wstring());
+			playerMove2Str.str(std::wstring());
+
 			// The two moves to be made, assume player only searches for Croc
-			std::wstring playerMove = L"S";
-			std::wstring playerMove2 = L"S";
-			int outScore;
+			// -1 means the player will search
+			int playerMove1 = -1;
+			int playerMove2 = -1;
+
+			// Predict where the Croc is by estimating the probabilities for each waterhole
+			// to have the Croc in it based on the readings from the Croc
+			for (unsigned int i = 0; i < NUM_WATERHOLES; ++i)
+			{
+
+			}
 
 			// A backpacker is currently being eaten, this reveals the Crocs location
 			if (curGameState.backpacker1Activity < 0)
@@ -215,13 +242,24 @@ int main()
 				int crocLoc = curGameState.backpacker2Activity * -1;
 			}
 
+			if (playerMove1 == -1)
+				playerMove1Str << MOVE_SEARCH;
+			else
+				playerMove1Str << playerMove1;
+
+			if (playerMove2 == -1)
+				playerMove2Str << MOVE_SEARCH;
+			else
+				playerMove2Str << playerMove2; 
+
 			// After predicting the Crocs location and where the Croc is moving,
 			// make moves (2 moves per 1 Croc/backpacker move)
-			if (!crocSession->makeMove(playerMove, playerMove2, outScore))
+			if (!crocSession->makeMove(playerMove1Str.str(), playerMove2Str.str(), curGameScore))
 			{
 				// Croc was found, game ends
-				gameIsRunning = false;
+				gameScores.push_back(curGameScore);
 				numGamesFinished++;
+				gameIsRunning = false;
 			}
 		}
 	}
