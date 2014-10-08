@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <cmath>
 
 #include "CrocGame.h"
 
@@ -66,6 +67,99 @@ std::vector<int> traceBack(int current, int start, std::vector<int> parents){
 		path.push_back(temp[i]);
 
 	return path;
+}
+
+//Get a measure of how close the sensor data is to the given waterhole
+//A greater result means a better match to the waterhole
+double getInvertedDeviationFromMeasurement(std::vector<std::pair<double, double>> distributions, std::vector<double> readings)
+{
+	double deviation = 0;
+	for(int i = 0; i < 3; i++)
+		//Add |mean - measurement|/stdev
+		deviation += std::abs(distributions[i].first - readings[i])/distributions[i].second;
+
+	return 1/deviation;
+}
+
+std::vector<double> getEmissionProbabilities(double calciumRead,		
+										     double salinityRead,		
+											 double alkalinityRead,
+										     std::vector<std::pair<double,double>> calciumDist,
+											 std::vector<std::pair<double,double>> salinityDist,
+										     std::vector<std::pair<double,double>> alkalinityDist){
+	std::vector<double> emissionProbs(NUM_WATERHOLES, 0);
+	std::vector<std::pair<double, double>> distributions(NUM_WATERHOLES, std::pair<double, double>(3, NULL));
+	std::vector<double> measurements(3, 0);
+	measurements[0] = calciumRead;
+	measurements[1] = salinityRead;
+	measurements[2] = alkalinityRead;
+
+	double sumOfVector = 0;
+
+	for(int i = 0; i < NUM_WATERHOLES; i++){
+		distributions[0] = calciumDist[i];
+		distributions[1] = salinityDist[i];
+		distributions[2] = alkalinityDist[i];
+
+		emissionProbs[i] = getInvertedDeviationFromMeasurement(distributions, measurements);
+		sumOfVector += emissionProbs[i];
+	}
+
+	//Normalize the vector
+	for(int i = 0; i < emissionProbs.size(); i++)
+		emissionProbs[i] /= sumOfVector;
+
+	return emissionProbs;
+}
+
+std::vector<double> viterbi(std::vector<double> V,
+							std::vector<std::vector<double>> transProbs,
+							std::vector<std::pair<double,double>> calciumDist, 
+							std::vector<std::pair<double,double>> salinityDist, 
+							std::vector<std::pair<double,double>> alkalinityDist,
+							double calciumReading,
+							double salineReading,
+							double alkalinityReading,
+							int knownLocation){
+	std::vector<double> newV(NUM_WATERHOLES, 0);
+	std::vector<double> emissionProbs(NUM_WATERHOLES, 0);
+	if(knownLocation > -1) //Croc's location is known
+		emissionProbs[knownLocation-1] = 1;
+	else
+		emissionProbs = getEmissionProbabilities(calciumReading, salineReading, alkalinityReading,
+											     calciumDist, salinityDist, alkalinityDist);
+	
+	double prob;
+	for(int i = 0; i < newV.size(); i++){
+		for(int j = 0; j < calciumDist.size(); j++){
+			prob = V[i]*transProbs[i][j]*emissionProbs[j];
+			if(prob > newV[j])
+				newV[j] = prob;
+		}
+	}
+
+	double sum = 0;
+	for(int i = 0; i < newV.size(); i++)
+		sum += newV[i];
+
+	for(int i = 0; i < newV.size(); i++)
+		newV[i] /= sum;
+
+	return newV;
+}
+
+
+
+int argMax(std::vector<double> v){
+	double max = v[0];
+	int index = 0;
+	for(int i = 1; i < v.size(); i++){
+		if(v[i] > max){
+			max = v[i];
+			index = i;
+		}
+	}
+	return index;
 }
 
 //Find the shortest path between two waterholes using Dijkstra's algorithm
@@ -173,6 +267,19 @@ int main()
 	std::wostringstream playerMove1Str;
 	std::wostringstream playerMove2Str;
 
+	//Transition probabilities used for Viterbi algorithm
+	std::vector<std::vector<double>> transProbs (NUM_WATERHOLES, std::vector<double> (NUM_WATERHOLES, 0));;
+	double iProbability; //Uniform transition probabilities from hole i
+	for(int i = 0; i < paths.size(); i++){
+		iProbability = (double)1/paths[i].size();
+		for(int j = 0; j < paths[i].size(); j++){
+			transProbs[i][paths[i][j]-1] = iProbability;
+		}
+	}
+
+	//Probability that Croc is in a lake without any readings
+	double initialProbability = (double)1/NUM_WATERHOLES;
+			
 	// Play a certain amount of games before posting results
 	while(numGamesFinished < NUM_GAMES)
 	{
@@ -200,6 +307,39 @@ int main()
 		// Clear our probabilities array
 		std::fill_n(waterHoleProbabilities, NUM_WATERHOLES, 0.0);
 
+		//Initialize the state vector V which will be used in the Viterbi algorithm
+		std::vector<double> V (NUM_WATERHOLES, 0);
+
+		//Get the game state 
+		crocSession->GetGameState(
+				curGameState.score,
+				curGameState.playerLocation,
+				curGameState.backpacker1Activity,	
+				curGameState.backpacker2Activity,	
+				curGameState.calciumReading,		
+				curGameState.salineReading,			
+				curGameState.alkalinityReading);
+
+		//Emission probability vector
+		//These probabilities represent how well Croc's readings matches each lake
+		std::vector<double> emissionProbs(NUM_WATERHOLES, 0);
+		emissionProbs = getEmissionProbabilities(curGameState.calciumReading,		
+												 curGameState.salineReading,			
+												 curGameState.alkalinityReading,
+												 calciumDist,
+												 salinityDist,
+												 alkalinityDist);
+
+
+		if(curGameState.backpacker1Activity < 0){
+			V[curGameState.backpacker1Activity*-1 - 1] = 1;
+		} else if(curGameState.backpacker2Activity < 0){
+			V[curGameState.backpacker2Activity*-1 - 1] = 1;
+		} else {
+			for(int i = 0; i < NUM_WATERHOLES; i++)
+				V[i] = initialProbability*emissionProbs[i];
+		}
+
 		//--------------------------------------------
 		// Game session loop
 		//--------------------------------------------
@@ -223,24 +363,41 @@ int main()
 			int playerMove1 = -1;
 			int playerMove2 = -1;
 
-			// Predict where the Croc is by estimating the probabilities for each waterhole
-			// to have the Croc in it based on the readings from the Croc
-			for (unsigned int i = 0; i < NUM_WATERHOLES; ++i)
-			{
-				double probabilityValue = 0.0; // Some calculated value
-				waterHoleProbabilities[i] = probabilityValue;
-			}
+			//The waterhole to head for
+			int crocLoc;
 
 			// A backpacker is currently being eaten, this reveals the Crocs location
 			if (curGameState.backpacker1Activity < 0)
 			{
 				// Save this location and try to predict where the Croc will move next
-				int crocLoc = curGameState.backpacker1Activity * -1;
+				crocLoc = curGameState.backpacker1Activity * -1;
+				V = viterbi(V, transProbs, calciumDist, salinityDist, alkalinityDist,
+					        curGameState.calciumReading, curGameState.salineReading,
+							curGameState.alkalinityReading, curGameState.backpacker1Activity*-1);
 			}
 			else if (curGameState.backpacker2Activity < 0)
 			{
 				// Save this location and try to predict where the Croc will move next
-				int crocLoc = curGameState.backpacker2Activity * -1;
+				crocLoc = curGameState.backpacker2Activity * -1;
+				V = viterbi(V, transProbs, calciumDist, salinityDist, alkalinityDist,
+					        curGameState.calciumReading, curGameState.salineReading,
+							curGameState.alkalinityReading, curGameState.backpacker2Activity*-1);
+			} else {
+				// Predict where the Croc is by estimating the probabilities for each waterhole
+				// to have the Croc in it based on the readings from the Croc
+				V = viterbi(V, transProbs, calciumDist, salinityDist, alkalinityDist,
+					        curGameState.calciumReading, curGameState.salineReading,
+							curGameState.alkalinityReading, -1);
+				crocLoc = argMax(V)+1;
+			}
+
+			//The ranger must head for crocLoc and search if the waterhole is close enough
+			std::vector<int> path = findShortestPath(curGameState.playerLocation, crocLoc, paths);
+			if(path.size() > 1){
+				playerMove1 = path[0];
+				playerMove2 = path[1];
+			} else if(path.size()>0){
+				playerMove1 = path[0];
 			}
 
 			if (playerMove1 == -1)
@@ -261,12 +418,16 @@ int main()
 				gameScores.push_back(curGameScore);
 				numGamesFinished++;
 				gameIsRunning = false;
+				std::cout << curGameScore << std::endl;
 			}
 		}
 	}
 
+	std::cout << "Game finished with an average of " << crocSession->getAverage();
+
+	while(true){}
 	// Post results after playing 100 games or more
-	crocSession->PostResults();
+	//crocSession->PostResults();
 	delete crocSession;
 
 	return 0;
