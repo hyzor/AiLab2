@@ -8,6 +8,7 @@
 #define NUM_GAMES 100
 #define NUM_WATERHOLES 35
 #define MOVE_SEARCH L"S"
+#define UPLOAD_THRESH 25
 
 struct GameState
 {
@@ -248,12 +249,16 @@ int main()
 {
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 
-	std::wstring groupName = L"Test";
+	std::wstring groupName = L"Skynet";
 	bool isOk = false;
+
+	double score = 200;
+
+	while(score > UPLOAD_THRESH){
 
 	unsigned int numGamesFinished = 0;
 
-	std::wcout << "Starting game using group name " << groupName.c_str() << std::endl;
+	//std::wcout << "Starting game using group name " << groupName.c_str() << std::endl;
 	CrocSession* crocSession = new CrocSession(groupName, isOk);
 
 	// Game paths
@@ -418,17 +423,18 @@ int main()
 				gameScores.push_back(curGameScore);
 				numGamesFinished++;
 				gameIsRunning = false;
-				std::cout << curGameScore << std::endl;
 			}
 		}
 	}
 
-	std::cout << "Game finished with an average of " << crocSession->getAverage();
-
-	while(true){}
-	// Post results after playing 100 games or more
-	//crocSession->PostResults();
+	std::cout << "Game finished with an average of " << crocSession->getAverage() << std::endl;
+	score = crocSession->getAverage();
+	
+	if(score <= UPLOAD_THRESH)
+		crocSession->PostResults();
 	delete crocSession;
-
+	}
+	// Post results after playing 100 games or more
+	
 	return 0;
 }
