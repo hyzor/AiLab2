@@ -8,7 +8,8 @@
 #define NUM_GAMES 100
 #define NUM_WATERHOLES 35
 #define MOVE_SEARCH L"S"
-#define UPLOAD_THRESH 19
+
+const double sqrttau = sqrt(6.283185307179586476925286766559);
 
 struct GameState
 {
@@ -44,6 +45,7 @@ int findMin(std::vector<int> open, std::vector<int> G){
 	return index;
 }
 
+//Find out whether a value is in the array
 bool isInVector(int waterhole, std::vector<int> theArray){
 	for(int i = 0; i < theArray.size(); i++){
 		if(theArray[i] == waterhole)
@@ -70,17 +72,23 @@ std::vector<int> traceBack(int current, int start, std::vector<int> parents){
 	return path;
 }
 
+//Calculate the normal distribution value
+//The returned value is [e^(-(x-mean)^2 / (2*stdev))]/(sqrt(2*pi)*stdev)
+double normalDistribution(std::pair<double, double> dist, double x) {
+	return 1.0/(sqrttau * dist.second)*exp(-(x-dist.first)*(x-dist.first)/(2*dist.second*dist.second));
+}
+
 //Get a measure of how close the sensor data is to the given waterhole
 //A greater result means a better match to the waterhole
-double getInvertedDeviationFromMeasurement(std::vector<std::pair<double, double>> distributions, std::vector<double> readings)
+double getDeviationFromMeasurement(std::vector<std::pair<double, double>> distributions, std::vector<double> readings)
 {
-	double deviation = 0;
+	double deviation = 1;
 	for(int i = 0; i < 3; i++)
-		//Add |mean - measurement|/stdev
-		deviation += std::abs(distributions[i].first - readings[i])/distributions[i].second;
-
-	return 1/deviation;
+		//Multiply the deviation with the value from the normal distribution
+		deviation *= normalDistribution(distributions[i], readings[i]);
+	return deviation;
 }
+
 
 //Get the emission probabilities based on Croc's readings
 std::vector<double> getEmissionProbabilities(double calciumRead,		
@@ -106,7 +114,7 @@ std::vector<double> getEmissionProbabilities(double calciumRead,
 		distributions[1] = salinityDist[i];
 		distributions[2] = alkalinityDist[i];
 
-		emissionProbs[i] = getInvertedDeviationFromMeasurement(distributions, measurements);
+		emissionProbs[i] = getDeviationFromMeasurement(distributions, measurements);
 		sum += emissionProbs[i];
 	}
 
@@ -117,7 +125,7 @@ std::vector<double> getEmissionProbabilities(double calciumRead,
 	return emissionProbs;
 }
 
-//Perform an iteration of the Viterbi algorithm
+//Perform an iteration of the Viterbi(?) algorithm
 std::vector<double> viterbi(std::vector<double> V,
 							std::vector<std::vector<double>> transProbs,
 							std::vector<std::pair<double,double>> calciumDist, 
@@ -140,8 +148,7 @@ std::vector<double> viterbi(std::vector<double> V,
 	for(int i = 0; i < newV.size(); i++){
 		for(int j = 0; j < calciumDist.size(); j++){
 			prob = V[i]*transProbs[i][j]*emissionProbs[j];
-			//if(prob > newV[j])
-				newV[j] += prob;
+			newV[j] += prob;
 		}
 	}
 
@@ -155,7 +162,6 @@ std::vector<double> viterbi(std::vector<double> V,
 
 	return newV;
 }
-
 
 //Get the index of the largest value in the array
 int argMax(std::vector<double> v){
@@ -178,12 +184,11 @@ std::vector<int> findShortestPath(int start, int goal, std::vector<std::vector<i
 		return emptySet;
 	}
 
-	int size = 35;
-	std::vector<int> G(size, 40);
+	std::vector<int> G(NUM_WATERHOLES, 40);
 
 	std::vector<int> open;
 	std::vector<int> closed;
-	std::vector<int> parent(size);
+	std::vector<int> parent(NUM_WATERHOLES);
 
 	open.push_back(start);
 	G[start-1] = 0;
@@ -237,8 +242,8 @@ int main()
 	bool isOk = false;
 
 	double score = 200;
-
-	while(score > UPLOAD_THRESH){
+	double best = 200;
+	while(true){
 
 	unsigned int numGamesFinished = 0;
 
@@ -406,15 +411,14 @@ int main()
 			}
 		}
 	}
-
-	std::cout << "Game finished with an average of " << crocSession->getAverage() << std::endl;
 	score = crocSession->getAverage();
+	if(score < best) best = score;
+	crocSession->PostResults();
+
+	std::cout << "Game finished with an average of " << crocSession->getAverage() << "! The best score is " << best << "!" << std::endl;
 	
-	if(score <= UPLOAD_THRESH)
-		crocSession->PostResults();
 	delete crocSession;
 	}
-	// Post results after playing 100 games or more
 	
 	return 0;
 }
