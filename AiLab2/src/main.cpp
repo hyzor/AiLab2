@@ -8,7 +8,7 @@
 #define NUM_GAMES 100
 #define NUM_WATERHOLES 35
 #define MOVE_SEARCH L"S"
-#define UPLOAD_THRESH 22
+#define UPLOAD_THRESH 19
 
 struct GameState
 {
@@ -98,6 +98,8 @@ std::vector<double> getEmissionProbabilities(double calciumRead,
 	measurements[1] = salinityRead;
 	measurements[2] = alkalinityRead;
 
+	double sum = 0;
+
 	std::vector<std::pair<double, double>> distributions(NUM_WATERHOLES, std::pair<double, double>(3, NULL));
 	for(int i = 0; i < NUM_WATERHOLES; i++){
 		distributions[0] = calciumDist[i];
@@ -105,6 +107,11 @@ std::vector<double> getEmissionProbabilities(double calciumRead,
 		distributions[2] = alkalinityDist[i];
 
 		emissionProbs[i] = getInvertedDeviationFromMeasurement(distributions, measurements);
+		sum += emissionProbs[i];
+	}
+
+	for(int i = 0; i < emissionProbs.size(); i++){
+		emissionProbs[i]/sum;
 	}
 
 	return emissionProbs;
@@ -133,8 +140,8 @@ std::vector<double> viterbi(std::vector<double> V,
 	for(int i = 0; i < newV.size(); i++){
 		for(int j = 0; j < calciumDist.size(); j++){
 			prob = V[i]*transProbs[i][j]*emissionProbs[j];
-			if(prob > newV[j])
-				newV[j] = prob;
+			//if(prob > newV[j])
+				newV[j] += prob;
 		}
 	}
 
